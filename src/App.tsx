@@ -4,7 +4,7 @@ import { TenantDashboard } from './pages/admin/TenantDashboard';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import Storefront from './pages/Storefront.tsx'; // 👈 Import your new Storefront component
 
-function App() {
+export default function App() {
     return (
         <BrowserRouter>
             <Routes>
@@ -23,5 +23,3 @@ function App() {
         </BrowserRouter>
     );
 }
-
-export default App;
