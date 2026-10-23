@@ -1,13 +1,6 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import axios, { type AxiosResponse } from 'axios';
-import { loadStripe } from '@stripe/stripe-js';
-import {
-  Elements,
-  CardElement,
-  useStripe,
-  useElements,
-} from '@stripe/react-stripe-js';
 
 // --- BRAND & WATERMARK ASSETS ---
 import logoImg from '../assets/darkLogo.png';
@@ -35,112 +28,7 @@ import shutTheCluckUpImg from '../assets/shutTheCluckUp.png';
 import sonOfABunImg from '../assets/sonOfABun.png';
 import tenderImg from '../assets/tender.png';
 
-// Initialize Stripe with your Test Publishable Key
-const stripePromise = loadStripe('pk_test_your_publishable_key_here');
 
-// --- STRIPE CARD FORM COMPONENT ---
-function CheckoutForm({
-                        clientSecret,
-                        orderId,
-                        onSuccess,
-                        onBack,
-                      }: {
-  clientSecret: string;
-  orderId: number;
-  onSuccess: () => void;
-  onBack: () => void;
-}) {
-  const stripe = useStripe();
-  const elements = useElements();
-  const [loading, setLoading] = useState(false);
-  const [cardHolderName, setCardHolderName] = useState('');
-  const [errorMessage, setErrorMessage] = useState('');
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!stripe || !elements) return;
-
-    setLoading(true);
-    setErrorMessage('');
-
-    const cardElement = elements.getElement(CardElement);
-    if (!cardElement) {
-      setLoading(false);
-      return;
-    }
-
-    const result = await stripe.confirmCardPayment(clientSecret, {
-      payment_method: {
-        card: cardElement,
-        billing_details: {
-          name: cardHolderName || 'Guest Customer',
-        },
-      },
-    });
-
-    if (result.error) {
-      setErrorMessage(result.error.message || 'Payment failed');
-      setLoading(false);
-    } else if (result.paymentIntent && result.paymentIntent.status === 'succeeded') {
-      setLoading(false);
-      onSuccess();
-    }
-  };
-
-  return (
-      <form onSubmit={handleSubmit} style={styles.paymentForm}>
-        <h3 style={{ fontSize: '1.5rem', fontWeight: 'bold', marginBottom: '1rem', color: '#0f172a' }}>
-          Enter Payment Details for Order #{orderId}
-        </h3>
-
-        <div style={{ marginBottom: '1rem' }}>
-          <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: '#475569', fontWeight: '600' }}>
-            Cardholder Name
-          </label>
-          <input
-              type="text"
-              placeholder="Jane Doe"
-              value={cardHolderName}
-              onChange={(e) => setCardHolderName(e.target.value)}
-              required
-              style={{
-                width: '100%',
-                padding: '0.75rem',
-                borderRadius: '0.5rem',
-                border: '1px solid #cbd5e1',
-                fontSize: '1rem',
-              }}
-          />
-        </div>
-
-        <div style={{ marginBottom: '1.25rem', padding: '1rem', border: '1px solid #cbd5e1', borderRadius: '0.5rem', backgroundColor: '#f8fafc' }}>
-          <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: '#475569', fontWeight: '600' }}>
-            Card Information
-          </label>
-          <CardElement options={{
-            style: {
-              base: {
-                fontSize: '16px',
-                color: '#0f172a',
-                '::placeholder': { color: '#94a3b8' },
-              },
-            },
-          }} />
-        </div>
-
-        {errorMessage && <p style={{ color: '#dc2626', fontSize: '0.9rem', marginBottom: '1rem' }}>{errorMessage}</p>}
-
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem' }}>
-          <button type="button" onClick={onBack} style={styles.backBtn}>
-            Back
-          </button>
-          <button type="submit" disabled={!stripe || loading} style={styles.checkoutBtn}>
-            {loading ? 'Processing Payment...' : 'Pay Now 🔥'}
-          </button>
-        </div>
-      </form>
-  );
-}
 
 // --- TYPESCRIPT INTERFACES ---
 interface MenuItem {
@@ -421,10 +309,6 @@ export default function Storefront() {
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [scrollY, setScrollY] = useState<number>(0);
 
-  // Stripe Payment State
-  const [clientSecret, setClientSecret] = useState<string | null>(null);
-  const [orderId, setOrderId] = useState<number | null>(null);
-
   // View & Checkout State
   const [currentView, setCurrentView] = useState<'menu' | 'checkout'>('menu');
   const [submittingOrder, setSubmittingOrder] = useState<boolean>(false);
@@ -532,7 +416,7 @@ export default function Storefront() {
     if (isDrink) {
       const sizeObj = DRINK_SIZES.find((s) => s.id === selectedDrinkSize);
       const sizeLabel = sizeObj ? sizeObj.label : 'Medium';
-      displayName = `${activeItemModal.name} (${sizeLabel} - ${selectedDrink})`;
+      displayName = `${activeItemModal.name} - ${sizeLabel} (${selectedDrink})`;
     } else if (isCheeseItem) {
       displayName = `${activeItemModal.name} (${selectedCheese})`;
     }
@@ -610,6 +494,7 @@ export default function Storefront() {
     const storeData = restaurant || DEMO_RESTAURANT;
     const restaurantId = storeData.id || 1;
 
+    // Structured matching your backend's PosOrderRequest format
     const orderPayload = {
       orderType: 'ONLINE_PICKUP',
       paymentMethod: 'STRIPE',
@@ -626,23 +511,17 @@ export default function Storefront() {
           { withCredentials: true }
       );
 
-      const { orderId: resOrderId, clientSecret: resClientSecret } = response.data;
+      const { orderId, clientSecret } = response.data;
+      alert(`Order #${orderId} initialized successfully! Stripe Client Secret received.`);
 
-      // Save Stripe credentials to state to render the Card Payment Form
-      setOrderId(resOrderId);
-      setClientSecret(resClientSecret);
+      console.log("Stripe ClientSecret:", clientSecret);
+
+      setCart([]);
       setIsCartOpen(false);
-    } catch (err: unknown) {
+      setCurrentView('menu');
+    } catch (err) {
       console.error('Checkout submission error:', err);
-      let errorMsg = 'An unexpected error occurred.';
-
-      if (axios.isAxiosError(err)) {
-        const data = err.response?.data as { message?: string; error?: string };
-        errorMsg = data?.message || data?.error || err.message;
-      } else if (err instanceof Error) {
-        errorMsg = err.message;
-      }
-      alert(`Failed to place order: ${errorMsg}`);
+      alert('Failed to place order. Please ensure you are logged in.');
     } finally {
       setSubmittingOrder(false);
     }
@@ -662,29 +541,6 @@ export default function Storefront() {
   }
 
   const storeData = restaurant || DEMO_RESTAURANT;
-
-  // --- RENDER STRIPE PAYMENT FORM WHEN CLIENT SECRET IS PRESENT ---
-  if (clientSecret && orderId) {
-    return (
-        <Elements stripe={stripePromise} options={{ clientSecret }}>
-          <CheckoutForm
-              clientSecret={clientSecret}
-              orderId={orderId}
-              onSuccess={() => {
-                alert(`Order #${orderId} successfully placed and paid! See you at pickup!`);
-                setCart([]);
-                setClientSecret(null);
-                setOrderId(null);
-                setCurrentView('menu');
-              }}
-              onBack={() => {
-                setClientSecret(null);
-                setOrderId(null);
-              }}
-          />
-        </Elements>
-    );
-  }
 
   return (
       <div style={styles.pageWrapper}>
@@ -762,7 +618,7 @@ export default function Storefront() {
                     ← Back to Menu
                   </button>
                   <button onClick={handleCheckoutSubmit} disabled={submittingOrder} style={styles.checkoutBtn}>
-                    {submittingOrder ? 'Initializing Stripe...' : 'Proceed to Payment 🔥'}
+                    {submittingOrder ? 'Processing Payment...' : 'Confirm & Pay with Stripe 🔥'}
                   </button>
                 </div>
               </div>
@@ -795,8 +651,8 @@ export default function Storefront() {
                             color: selectedCategory === cat ? '#fff' : '#52525b',
                             fontWeight: '700'
                           }}>
-                      {count}
-                    </span>
+                        {count}
+                      </span>
                         </button>
                     );
                   })}
@@ -865,42 +721,253 @@ export default function Storefront() {
             </div>
         )}
 
-        {/* CART DRAWER */}
-        {isCartOpen && (
-            <div style={styles.drawerOverlay} onClick={() => setIsCartOpen(false)}>
-              <div style={styles.drawerContent} onClick={(e) => e.stopPropagation()}>
-                <div style={styles.drawerHeader}>
-                  <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: '800' }}>Your Order 🛒</h3>
-                  <button onClick={() => setIsCartOpen(false)} style={styles.drawerClose}>✕</button>
+        {activeItemModal && (
+            <div style={styles.modalOverlay} onClick={() => setActiveItemModal(null)}>
+              <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+                <button style={styles.modalClose} onClick={() => setActiveItemModal(null)}>
+                  ✕
+                </button>
+                <h3 style={styles.modalTitle}>{activeItemModal.name}</h3>
+                <p style={styles.modalSubtitle}>Customize your options and quantity</p>
+
+                {itemIsCheese(activeItemModal.name) && (
+                    <div style={styles.heatSection}>
+                      <label style={styles.sectionLabel}>SELECT CHEESE TYPE:</label>
+                      <div style={styles.heatGrid}>
+                        {CHEESE_OPTIONS.map((cheese) => {
+                          const isSelected = selectedCheese === cheese;
+                          return (
+                              <button
+                                  key={cheese}
+                                  onClick={() => setSelectedCheese(cheese)}
+                                  style={{
+                                    ...styles.heatPill,
+                                    borderColor: isSelected ? '#dc2626' : '#e4e4e7',
+                                    backgroundColor: isSelected ? 'rgba(220,38,38,0.08)' : '#f4f4f5',
+                                    boxShadow: isSelected ? '0 0 10px rgba(220,38,38,0.2)' : 'none',
+                                  }}
+                              >
+                                <span style={{ fontSize: '1.1rem' }}>🧀</span>
+                                <span style={{ ...styles.heatLabel, color: isSelected ? '#dc2626' : '#09090b', fontWeight: isSelected ? 'bold' : 'normal' }}>
+                          {cheese}
+                        </span>
+                              </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                )}
+
+                {itemIsFountainDrink(activeItemModal.name) && (
+                    <>
+                      <div style={styles.heatSection}>
+                        <label style={styles.sectionLabel}>CHOOSE SIZE:</label>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.5rem', marginBottom: '1.25rem' }}>
+                          {DRINK_SIZES.map((size) => {
+                            const isSelected = selectedDrinkSize === size.id;
+                            return (
+                                <button
+                                    key={size.id}
+                                    onClick={() => setSelectedDrinkSize(size.id)}
+                                    style={{
+                                      ...styles.heatPill,
+                                      justifyContent: 'center',
+                                      borderColor: isSelected ? '#dc2626' : '#e4e4e7',
+                                      backgroundColor: isSelected ? 'rgba(220,38,38,0.08)' : '#f4f4f5',
+                                      boxShadow: isSelected ? '0 0 10px rgba(220,38,38,0.2)' : 'none',
+                                    }}
+                                >
+                                  <span style={{ fontSize: '1rem', fontWeight: isSelected ? 'bold' : '600', color: isSelected ? '#dc2626' : '#09090b' }}>
+                            {size.label} • ${size.price.toFixed(2)}
+                          </span>
+                                </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      <div style={styles.heatSection}>
+                        <label style={styles.sectionLabel}>SELECT DRINK FLAVOR:</label>
+                        <div style={styles.heatGrid}>
+                          {FOUNTAIN_DRINKS.map((drink) => {
+                            const isSelected = selectedDrink === drink;
+                            return (
+                                <button
+                                    key={drink}
+                                    onClick={() => setSelectedDrink(drink)}
+                                    style={{
+                                      ...styles.heatPill,
+                                      borderColor: isSelected ? '#dc2626' : '#e4e4e7',
+                                      backgroundColor: isSelected ? 'rgba(220,38,38,0.08)' : '#f4f4f5',
+                                      boxShadow: isSelected ? '0 0 10px rgba(220,38,38,0.2)' : 'none',
+                                    }}
+                                >
+                                  <span style={{ fontSize: '1.1rem' }}>🥤</span>
+                                  <span style={{ ...styles.heatLabel, color: isSelected ? '#dc2626' : '#09090b', fontWeight: isSelected ? 'bold' : 'normal' }}>
+                            {drink}
+                          </span>
+                                </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </>
+                )}
+
+                {itemHasHeatOption(activeItemModal.name) && (
+                    <div style={styles.heatSection}>
+                      <label style={styles.sectionLabel}>CHOOSE SPICE LEVEL:</label>
+                      <div style={styles.heatGrid}>
+                        {HEAT_LEVELS.map((heat) => {
+                          const isSelected = selectedHeat.id === heat.id;
+                          return (
+                              <button
+                                  key={heat.id}
+                                  onClick={() => setSelectedHeat(heat)}
+                                  style={{
+                                    ...styles.heatPill,
+                                    borderColor: isSelected ? heat.color : '#e4e4e7',
+                                    backgroundColor: isSelected ? `${heat.color}15` : '#f4f4f5',
+                                    boxShadow: isSelected ? `0 0 12px ${heat.color}44` : 'none',
+                                  }}
+                              >
+                                <span style={{ fontSize: '1.2rem' }}>{heat.icon}</span>
+                                <span style={{ ...styles.heatLabel, color: isSelected ? '#09090b' : '#71717a' }}>
+                          {heat.label}
+                        </span>
+                              </button>
+                          );
+                        })}
+                      </div>
+                      <div
+                          style={{
+                            ...styles.heatBanner,
+                            backgroundColor: `${selectedHeat.color}15`,
+                            borderColor: selectedHeat.color,
+                          }}
+                      >
+                  <span style={{ color: selectedHeat.color, fontWeight: 'bold' }}>
+                    {selectedHeat.icon} {selectedHeat.label}:
+                  </span>{' '}
+                        {selectedHeat.desc}
+                      </div>
+                    </div>
+                )}
+
+                <div style={styles.qtyRow}>
+                  <span style={styles.sectionLabel}>QUANTITY:</span>
+                  <div style={styles.qtyControls}>
+                    <button onClick={() => setItemQuantity(Math.max(1, itemQuantity - 1))} style={styles.qtyBtn}>
+                      -
+                    </button>
+                    <span style={styles.qtyVal}>{itemQuantity}</span>
+                    <button onClick={() => setItemQuantity(itemQuantity + 1)} style={styles.qtyBtn}>
+                      +
+                    </button>
+                  </div>
                 </div>
 
-                <div style={styles.drawerBody}>
+                <div style={{ marginTop: '1.25rem' }}>
+                  <label style={styles.sectionLabel}>SPECIAL INSTRUCTIONS:</label>
+                  <input
+                      type="text"
+                      placeholder="Extra pickles, sauce on side, etc."
+                      value={specialInstructions}
+                      onChange={(e) => setSpecialInstructions(e.target.value)}
+                      style={styles.modalInput}
+                  />
+                </div>
+
+                <button onClick={handleAddToCart} style={styles.modalAddBtn}>
+                  Add to Order • ${(calculatedUnitPrice * itemQuantity).toFixed(2)}
+                </button>
+              </div>
+            </div>
+        )}
+
+        {isCartOpen && (
+            <div style={styles.modalOverlay} onClick={() => setIsCartOpen(false)}>
+              <div style={styles.cartDrawer} onClick={(e) => e.stopPropagation()}>
+                <div style={styles.cartHeader}>
+                  <h3 style={{ margin: 0, fontSize: '1.3rem', color: '#09090b' }}>Your Order</h3>
+                  <button style={styles.modalClose} onClick={() => setIsCartOpen(false)}>
+                    ✕
+                  </button>
+                </div>
+
+                <div style={styles.cartBody}>
                   {cart.length === 0 ? (
-                      <p style={{ textAlign: 'center', color: '#71717a', marginTop: '3rem' }}>Your cart is empty.</p>
+                      <div style={{ textAlign: 'center', color: '#a1a1aa', padding: '3rem 0' }}>
+                        <span style={{ fontSize: '3rem', display: 'block', marginBottom: '1rem' }}>🛒</span>
+                        Your cart is currently empty.
+                      </div>
                   ) : (
                       <>
                         {cart.map((item) => (
-                            <div key={item.cartId} style={styles.drawerItem}>
+                            <div key={item.cartId} style={styles.cartItemCard}>
+                              {item.image && (
+                                  <img
+                                      src={item.image}
+                                      alt={item.name}
+                                      style={{ width: '45px', height: '45px', objectFit: 'cover', borderRadius: '8px', marginRight: '10px' }}
+                                  />
+                              )}
                               <div style={{ flex: 1 }}>
-                                <div style={{ fontWeight: 'bold', fontSize: '0.95rem' }}>{item.name}</div>
-                                {item.heat && <div style={{ fontSize: '0.8rem', color: item.heat.color }}>{item.heat.icon} {item.heat.label}</div>}
-                                <div style={{ fontSize: '0.85rem', color: '#dc2626', fontWeight: 'bold', marginTop: '4px' }}>${(item.price * item.quantity).toFixed(2)}</div>
+                                <div style={{ fontWeight: 'bold', color: '#09090b' }}>{item.name}</div>
+                                {item.heat && (
+                                    <div style={{ fontSize: '0.85rem', color: item.heat.color, marginTop: '2px' }}>
+                                      {item.heat.icon} {item.heat.label}
+                                    </div>
+                                )}
+                                {item.instructions && (
+                                    <div
+                                        style={{
+                                          fontSize: '0.8rem',
+                                          color: '#71717a',
+                                          fontStyle: 'italic',
+                                          marginTop: '2px',
+                                        }}
+                                    >
+                                      "{item.instructions}"
+                                    </div>
+                                )}
+                                <div style={{ fontWeight: 'bold', color: '#dc2626', marginTop: '4px' }}>
+                                  ${(item.price * item.quantity).toFixed(2)}
+                                </div>
                               </div>
-                              <div style={styles.qtyControl}>
-                                <button onClick={() => updateCartQuantity(item.cartId, -1)} style={styles.qtyBtn}>-</button>
-                                <span style={{ fontSize: '0.9rem', fontWeight: 'bold' }}>{item.quantity}</span>
-                                <button onClick={() => updateCartQuantity(item.cartId, 1)} style={styles.qtyBtn}>+</button>
+                              <div style={styles.qtyControls}>
+                                <button onClick={() => updateCartQuantity(item.cartId, -1)} style={styles.qtyBtn}>
+                                  -
+                                </button>
+                                <span style={styles.qtyVal}>{item.quantity}</span>
+                                <button onClick={() => updateCartQuantity(item.cartId, 1)} style={styles.qtyBtn}>
+                                  +
+                                </button>
                               </div>
                             </div>
                         ))}
 
-                        <div style={{ marginTop: '1.5rem', borderTop: '1px solid #e4e4e7', paddingTop: '1rem' }}>
-                          <h4 style={{ fontSize: '0.95rem', fontWeight: '700', marginBottom: '0.75rem' }}>🔥 Add Quick Flame Extras:</h4>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                        <div style={styles.upsellSection}>
+                          <h4 style={styles.upsellTitle}>🔥 PAIRS WELL WITH:</h4>
+                          <div style={styles.upsellList}>
                             {UPSELL_ITEMS.map((upsell) => (
-                                <div key={upsell.id} style={styles.upsellRow}>
-                                  <span style={{ fontSize: '0.85rem' }}>{upsell.name} (+${upsell.price.toFixed(2)})</span>
-                                  <button onClick={() => handleAddQuickUpsell(upsell)} style={styles.upsellAddBtn}>+ Add</button>
+                                <div key={upsell.id} style={styles.upsellCard}>
+                                  {upsell.image && (
+                                      <img
+                                          src={upsell.image}
+                                          alt={upsell.name}
+                                          style={{ width: '36px', height: '36px', objectFit: 'cover', borderRadius: '6px', marginRight: '8px' }}
+                                      />
+                                  )}
+                                  <div style={{ flex: 1 }}>
+                                    <div style={{ color: '#09090b', fontSize: '0.85rem', fontWeight: 'bold' }}>
+                                      {upsell.name}
+                                    </div>
+                                    <div style={{ color: '#dc2626', fontSize: '0.8rem' }}>+${upsell.price.toFixed(2)}</div>
+                                  </div>
+                                  <button onClick={() => handleAddQuickUpsell(upsell)} style={styles.upsellAddBtn}>
+                                    + Add
+                                  </button>
                                 </div>
                             ))}
                           </div>
@@ -910,10 +977,27 @@ export default function Storefront() {
                 </div>
 
                 {cart.length > 0 && (
-                    <div style={styles.drawerFooter}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem', fontWeight: '800', fontSize: '1.1rem' }}>
-                        <span>Subtotal:</span>
+                    <div style={styles.cartFooter}>
+                      <div style={styles.summaryRow}>
+                        <span>Subtotal</span>
                         <span>${cartTotal.toFixed(2)}</span>
+                      </div>
+                      <div style={styles.summaryRow}>
+                        <span>Estimated Tax</span>
+                        <span>${(cartTotal * 0.0825).toFixed(2)}</span>
+                      </div>
+                      <div
+                          style={{
+                            ...styles.summaryRow,
+                            color: '#09090b',
+                            fontSize: '1.2rem',
+                            fontWeight: 'bold',
+                            borderTop: '1px solid #e4e4e7',
+                            paddingTop: '0.75rem',
+                          }}
+                      >
+                        <span>Total</span>
+                        <span style={{ color: '#dc2626' }}>${(cartTotal * 1.0825).toFixed(2)}</span>
                       </div>
                       <button
                           onClick={() => {
@@ -930,687 +1014,606 @@ export default function Storefront() {
             </div>
         )}
 
-        {/* CUSTOMIZATION MODAL */}
-        {activeItemModal && (
-            <div style={styles.modalOverlay} onClick={() => setActiveItemModal(null)}>
-              <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
-                <button style={styles.modalClose} onClick={() => setActiveItemModal(null)}>✕</button>
-                <h3 style={styles.modalTitle}>{activeItemModal.name}</h3>
-                <p style={styles.modalSubtitle}>Customize your spice level and options</p>
-
-                {itemIsCheese(activeItemModal.name) && (
-                    <div style={styles.heatSection}>
-                      <label style={styles.sectionLabel}>SELECT CHEESE TYPE:</label>
-                      <div style={styles.heatGrid}>
-                        {CHEESE_OPTIONS.map((cheese) => {
-                          const isSelected = selectedCheese === cheese;
-                          return (
-                              <button
-                                  key={cheese}
-                                  onClick={() => setSelectedCheese(cheese)}
-                                  style={{
-                                    ...styles.heatPill,
-                                    backgroundColor: isSelected ? '#dc2626' : '#f4f4f5',
-                                    color: isSelected ? '#fff' : '#18181b',
-                                    borderColor: isSelected ? '#dc2626' : '#e4e4e7',
-                                  }}
-                              >
-                                {cheese}
-                              </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                )}
-
-                {itemIsFountainDrink(activeItemModal.name) && (
-                    <>
-                      <div style={styles.heatSection}>
-                        <label style={styles.sectionLabel}>SELECT FLAVOR:</label>
-                        <select
-                            value={selectedDrink}
-                            onChange={(e) => setSelectedDrink(e.target.value)}
-                            style={styles.drinkSelect}
-                        >
-                          {FOUNTAIN_DRINKS.map((drink) => (
-                              <option key={drink} value={drink}>{drink}</option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div style={styles.heatSection}>
-                        <label style={styles.sectionLabel}>SELECT SIZE:</label>
-                        <div style={styles.heatGrid}>
-                          {DRINK_SIZES.map((size) => {
-                            const isSelected = selectedDrinkSize === size.id;
-                            return (
-                                <button
-                                    key={size.id}
-                                    onClick={() => setSelectedDrinkSize(size.id)}
-                                    style={{
-                                      ...styles.heatPill,
-                                      backgroundColor: isSelected ? '#dc2626' : '#f4f4f5',
-                                      color: isSelected ? '#fff' : '#18181b',
-                                      borderColor: isSelected ? '#dc2626' : '#e4e4e7',
-                                    }}
-                                >
-                                  {size.label} (+${size.price.toFixed(2)})
-                                </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    </>
-                )}
-
-                {itemHasHeatOption(activeItemModal.name) && (
-                    <div style={styles.heatSection}>
-                      <label style={styles.sectionLabel}>SELECT HEAT LEVEL:</label>
-                      <div style={styles.heatGrid}>
-                        {HEAT_LEVELS.map((heat) => {
-                          const isSelected = selectedHeat.id === heat.id;
-                          return (
-                              <button
-                                  key={heat.id}
-                                  onClick={() => setSelectedHeat(heat)}
-                                  style={{
-                                    ...styles.heatPill,
-                                    backgroundColor: isSelected ? heat.color : '#f4f4f5',
-                                    color: isSelected ? '#fff' : '#18181b',
-                                    borderColor: isSelected ? heat.color : '#e4e4e7',
-                                  }}
-                              >
-                                <span>{heat.icon}</span>
-                                <span>{heat.label}</span>
-                              </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                )}
-
-                <div style={styles.heatSection}>
-                  <label style={styles.sectionLabel}>SPECIAL INSTRUCTIONS:</label>
-                  <input
-                      type="text"
-                      placeholder="E.g., extra sauce on the side"
-                      value={specialInstructions}
-                      onChange={(e) => setSpecialInstructions(e.target.value)}
-                      style={styles.instructionInput}
-                  />
-                </div>
-
-                <div style={styles.modalFooter}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                    <button onClick={() => setItemQuantity(Math.max(1, itemQuantity - 1))} style={styles.qtyBtn}>-</button>
-                    <span style={{ fontSize: '1.1rem', fontWeight: 'bold' }}>{itemQuantity}</span>
-                    <button onClick={() => setItemQuantity(itemQuantity + 1)} style={styles.qtyBtn}>+</button>
-                  </div>
-                  <button onClick={handleAddToCart} style={styles.addCartBtn}>
-                    Add to Cart • ${(calculatedUnitPrice * itemQuantity).toFixed(2)}
-                  </button>
-                </div>
-              </div>
-            </div>
-        )}
+        <style>{`
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+      `}</style>
       </div>
   );
 }
 
-// --- STYLES ---
-const styles: Record<string, React.CSSProperties> = {
-  pageWrapper: {
+const styles = {
+  loadingContainer: {
+    backgroundColor: '#fafafa',
+    color: '#09090b',
     minHeight: '100vh',
-    backgroundColor: '#fafaf9',
-    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontFamily: 'Inter, system-ui, sans-serif',
+  } as const,
+  spinner: {
+    width: '60px',
+    height: '60px',
+    border: '4px solid rgba(220, 38, 38, 0.2)',
+    borderTopColor: '#dc2626',
+    borderRadius: '50%',
+    animation: 'spin 1s linear infinite',
+  } as const,
+  loadingText: {
+    marginTop: '1.5rem',
+    color: '#dc2626',
+    fontWeight: 'bold',
+    letterSpacing: '2px',
+    fontSize: '1rem',
+  } as const,
+  pageWrapper: {
+    backgroundColor: '#f8fafc',
+    color: '#09090b',
+    minHeight: '100vh',
+    fontFamily: "'Inter', system-ui, -apple-system, sans-serif",
     position: 'relative',
+    paddingBottom: '5rem',
     overflowX: 'hidden',
-  },
+    width: '100vw',
+    marginLeft: 'calc(50% - 50vw)',
+    marginRight: 'calc(50% - 50vw)',
+  } as const,
   globalWatermarkLayer: {
     position: 'fixed',
     top: 0,
     left: 0,
-    right: 0,
-    bottom: 0,
+    width: '100vw',
+    height: '100vh',
+    backgroundPosition: 'center center',
     backgroundRepeat: 'no-repeat',
-    backgroundPosition: 'center',
-    backgroundSize: '450px',
-    opacity: 0.03,
-    pointerEvents: 'none',
+    backgroundSize: 'cover',
+    opacity: 0.85,
+    filter: 'contrast(1.15) brightness(0.98)',
     zIndex: 0,
-  },
+    pointerEvents: 'none',
+  } as const,
   heroHeader: {
-    backgroundColor: '#0f172a',
-    color: '#ffffff',
-    padding: '3rem 1.5rem',
-    textAlign: 'center',
     position: 'relative',
-    zIndex: 1,
-    boxShadow: '0 4px 20px rgba(0,0,0,0.2)',
-  },
+    minHeight: '340px',
+    background: 'radial-gradient(circle at 50% 30%, rgba(255, 245, 245, 0.85) 0%, rgba(254, 226, 226, 0.85) 70%, rgba(248, 250, 252, 0.9) 100%)',
+    display: 'flex',
+    alignItems: 'center',
+    padding: '4rem 2rem 3rem 2rem',
+    width: '100%',
+    boxSizing: 'border-box',
+    overflow: 'hidden',
+    borderBottom: '1px solid rgba(220, 38, 38, 0.15)',
+    zIndex: 2,
+  } as const,
   heroOverlay1: {
     position: 'absolute',
     inset: 0,
-    background: 'radial-gradient(circle at center, rgba(220, 38, 38, 0.15) 0%, transparent 70%)',
-    pointerEvents: 'none',
-  },
+    background: 'linear-gradient(to top, rgba(248, 250, 252, 0.8) 0%, rgba(248, 250, 252, 0.2) 100%)',
+    zIndex: 1,
+  } as const,
   heroContent: {
-    maxWidth: '800px',
-    margin: '0 auto',
     position: 'relative',
     zIndex: 2,
-  },
+    maxWidth: '1100px',
+    margin: '0 auto',
+    width: '100%',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    textAlign: 'center',
+  } as const,
   statusBadge: {
     display: 'inline-flex',
     alignItems: 'center',
-    gap: '6px',
-    backgroundColor: 'rgba(16, 185, 129, 0.2)',
-    color: '#34d399',
-    padding: '6px 14px',
-    borderRadius: '999px',
-    fontSize: '0.8rem',
+    gap: '0.5rem',
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    border: '1px solid rgba(16, 185, 129, 0.4)',
+    color: '#059669',
+    fontSize: '0.75rem',
     fontWeight: '700',
-    marginBottom: '1rem',
-    border: '1px solid rgba(52, 211, 153, 0.3)',
-  },
+    padding: '0.4rem 1rem',
+    borderRadius: '9999px',
+    marginBottom: '1.2rem',
+    backdropFilter: 'blur(8px)',
+  } as const,
   statusDot: {
     width: '8px',
     height: '8px',
-    backgroundColor: '#34d399',
+    backgroundColor: '#10b981',
     borderRadius: '50%',
-    boxShadow: '0 0 8px #34d399',
-  },
+  } as const,
   logoHeaderGroup: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: '16px',
-    marginBottom: '0.5rem',
-  },
+    marginBottom: '0.8rem',
+  } as const,
   logoTextWrapper: {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-  },
+    textAlign: 'center',
+  } as const,
   storeTitle: {
-    fontFamily: '"Bangers", cursive, sans-serif',
-    fontSize: '3.8rem',
-    letterSpacing: '2px',
-    margin: 0,
-    color: '#ffffff',
-    textShadow: '3px 3px 0px #dc2626',
-  },
-  logoSubText: {
-    fontSize: '0.9rem',
-    fontWeight: '800',
+    fontSize: 'clamp(3rem, 9vw, 4.8rem)',
+    fontWeight: '400',
+    fontFamily: "'Bangers', 'Impact', sans-serif",
     letterSpacing: '3px',
-    color: '#f87171',
-    marginTop: '-6px',
-  },
+    color: '#dc2626',
+    textShadow: `
+      2px 2px 0px #ffffff,
+      0 0 20px rgba(220, 38, 38, 0.25)
+    `,
+    margin: 0,
+    lineHeight: '1.0',
+    transform: 'rotate(-1.5deg)',
+  } as const,
+  logoSubText: {
+    fontFamily: "'Bangers', sans-serif",
+    color: '#18181b',
+    fontSize: 'clamp(0.9rem, 2vw, 1.2rem)',
+    fontWeight: '400',
+    letterSpacing: '4px',
+    marginTop: '0.3rem',
+    textTransform: 'uppercase',
+  } as const,
   storeSubtitle: {
-    fontSize: '1.05rem',
-    color: '#cbd5e1',
-    marginBottom: '1rem',
-  },
+    color: '#b91c1c',
+    fontSize: 'clamp(0.95rem, 2.5vw, 1.2rem)',
+    fontWeight: '800',
+    margin: '0.4rem 0 0.8rem 0',
+    letterSpacing: '0.5px',
+  } as const,
   metaRow: {
     display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: '10px',
+    gap: '0.5rem',
+    color: '#52525b',
     fontSize: '0.9rem',
-    color: '#94a3b8',
-  },
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+  } as const,
   metaDivider: {
-    color: '#dc2626',
-  },
+    color: '#a1a1aa',
+  } as const,
   stickyNav: {
     position: 'sticky',
     top: 0,
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    backdropFilter: 'blur(10px)',
-    borderBottom: '1px solid #e2e8f0',
-    zIndex: 10,
+    backgroundColor: 'rgba(255, 255, 255, 0.92)',
+    backdropFilter: 'blur(20px)',
+    borderBottom: '1px solid rgba(226, 232, 240, 0.8)',
+    zIndex: 20,
     padding: '0.75rem 1rem',
-    boxShadow: '0 2px 10px rgba(0,0,0,0.03)',
-  },
+    width: '100%',
+    boxSizing: 'border-box',
+    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.03)',
+  } as const,
   navContainer: {
-    maxWidth: '1200px',
+    maxWidth: '1100px',
     margin: '0 auto',
     display: 'flex',
-    gap: '10px',
+    gap: '0.75rem',
     overflowX: 'auto',
-    paddingBottom: '4px',
-  },
+    scrollbarWidth: 'none',
+  } as const,
   categoryTab: {
-    display: 'flex',
-    alignItems: 'center',
     backgroundColor: '#f1f5f9',
-    border: '1px solid #e2e8f0',
-    padding: '8px 16px',
-    borderRadius: '999px',
-    fontSize: '0.9rem',
-    fontWeight: '600',
     color: '#475569',
+    border: '1px solid #e2e8f0',
+    padding: '0.7rem 1.4rem',
+    borderRadius: '9999px',
+    fontWeight: '600',
+    fontSize: '0.875rem',
     cursor: 'pointer',
     whiteSpace: 'nowrap',
-    transition: 'all 0.2s',
-  },
+    display: 'flex',
+    alignItems: 'center',
+    transition: 'all 0.3s ease',
+  } as const,
   categoryTabActive: {
-    backgroundColor: '#0f172a',
+    backgroundColor: '#dc2626',
     color: '#ffffff',
-    borderColor: '#0f172a',
-  },
+    borderColor: '#dc2626',
+    boxShadow: '0 4px 15px rgba(220, 38, 38, 0.3)',
+  } as const,
   mainContent: {
-    maxWidth: '1200px',
+    maxWidth: '1100px',
     margin: '0 auto',
-    padding: '2rem 1rem 6rem 1rem',
+    padding: '3rem 1.5rem',
     position: 'relative',
-    zIndex: 1,
-  },
+    zIndex: 2,
+  } as const,
   menuHeader: {
     display: 'flex',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: '1.5rem',
-    borderBottom: '2px solid #e2e8f0',
-    paddingBottom: '0.75rem',
-  },
+    alignItems: 'baseline',
+    marginBottom: '2rem',
+  } as const,
   sectionTitle: {
-    fontSize: '1.8rem',
+    fontSize: '1.75rem',
     fontWeight: '800',
     color: '#0f172a',
     margin: 0,
-  },
+  } as const,
   itemCount: {
+    color: '#64748b',
     fontSize: '0.9rem',
     fontWeight: '600',
-    color: '#64748b',
-  },
+  } as const,
   grid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-    gap: '1.5rem',
-  },
+    gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
+    gap: '1.75rem',
+  } as const,
   card: {
     backgroundColor: '#ffffff',
     borderRadius: '16px',
     overflow: 'hidden',
     border: '1px solid #e2e8f0',
-    boxShadow: '0 4px 15px rgba(0,0,0,0.03)',
+    boxShadow: '0 10px 25px rgba(0, 0, 0, 0.08)',
     cursor: 'pointer',
     display: 'flex',
     flexDirection: 'column',
-    transition: 'transform 0.2s, box-shadow 0.2s',
-  },
+    transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+  } as const,
   cardImageWrapper: {
     position: 'relative',
-    height: '180px',
+    width: '100%',
+    height: '200px',
     backgroundColor: '#f1f5f9',
-    overflow: 'hidden',
-  },
+  } as const,
   cardImage: {
     width: '100%',
     height: '100%',
     objectFit: 'cover',
-  },
+  } as const,
   spicyBadge: {
     position: 'absolute',
-    top: '10px',
-    left: '10px',
+    top: '12px',
+    right: '12px',
     backgroundColor: 'rgba(220, 38, 38, 0.9)',
-    color: '#fff',
+    color: '#ffffff',
     fontSize: '0.7rem',
-    fontWeight: '800',
-    padding: '4px 8px',
-    borderRadius: '6px',
-  },
+    fontWeight: '700',
+    padding: '0.3rem 0.7rem',
+    borderRadius: '9999px',
+    backdropFilter: 'blur(4px)',
+  } as const,
   cardBody: {
     padding: '1.25rem',
     display: 'flex',
     flexDirection: 'column',
     flex: 1,
-  },
+    justifyContent: 'space-between',
+  } as const,
   itemTitle: {
     fontSize: '1.15rem',
-    fontWeight: '800',
+    fontWeight: 'bold',
     color: '#0f172a',
     margin: '0 0 0.5rem 0',
-  },
+  } as const,
   itemDesc: {
-    fontSize: '0.85rem',
-    color: '#64748b',
+    fontSize: '0.875rem',
+    color: '#475569',
     lineHeight: '1.4',
-    margin: '0 0 1rem 0',
-    flex: 1,
-  },
+    margin: '0 0 1.25rem 0',
+  } as const,
   cardFooter: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginTop: 'auto',
-  },
+  } as const,
   priceTag: {
     fontSize: '1.15rem',
-    fontWeight: '800',
+    fontWeight: '900',
     color: '#dc2626',
-  },
+  } as const,
   addButton: {
     backgroundColor: '#0f172a',
-    color: '#fff',
+    color: '#ffffff',
     border: 'none',
-    padding: '8px 14px',
+    padding: '0.6rem 1rem',
     borderRadius: '8px',
+    fontWeight: '600',
     fontSize: '0.85rem',
-    fontWeight: '700',
     cursor: 'pointer',
-  },
+    transition: 'background-color 0.2s ease',
+  } as const,
   floatingBar: {
     position: 'fixed',
-    bottom: '20px',
+    bottom: '24px',
     left: '50%',
     transform: 'translateX(-50%)',
-    backgroundColor: '#0f172a',
-    color: '#fff',
-    padding: '12px 24px',
-    borderRadius: '999px',
+    backgroundColor: '#ffffff',
+    color: '#0f172a',
+    padding: '0.9rem 1.5rem',
+    borderRadius: '9999px',
+    boxShadow: '0 10px 30px rgba(0, 0, 0, 0.15)',
     display: 'flex',
     alignItems: 'center',
-    gap: '24px',
-    boxShadow: '0 10px 25px rgba(0,0,0,0.3)',
+    gap: '2rem',
     zIndex: 100,
-  },
+    border: '1px solid #e2e8f0',
+  } as const,
   floatingInfo: {
     display: 'flex',
-    alignItems: 'center',
-    gap: '12px',
-  },
+    flexDirection: 'column',
+  } as const,
   floatingCount: {
-    backgroundColor: '#dc2626',
-    color: '#fff',
-    padding: '2px 8px',
-    borderRadius: '999px',
-    fontSize: '0.8rem',
-    fontWeight: '800',
-  },
+    fontSize: '0.75rem',
+    color: '#64748b',
+    fontWeight: '600',
+  } as const,
   floatingTotal: {
     fontSize: '1.1rem',
-    fontWeight: '800',
-  },
+    fontWeight: 'bold',
+    color: '#dc2626',
+  } as const,
   floatingButton: {
     backgroundColor: '#dc2626',
-    color: '#fff',
+    color: '#ffffff',
     border: 'none',
-    padding: '8px 16px',
-    borderRadius: '999px',
-    fontWeight: 'bold',
+    padding: '0.7rem 1.25rem',
+    borderRadius: '9999px',
+    fontWeight: '700',
+    fontSize: '0.9rem',
     cursor: 'pointer',
-  },
-  drawerOverlay: {
+  } as const,
+  modalOverlay: {
     position: 'fixed',
     inset: 0,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    zIndex: 200,
+    backgroundColor: 'rgba(15, 23, 42, 0.5)',
+    backdropFilter: 'blur(8px)',
     display: 'flex',
-    justifyContent: 'flex-end',
-  },
-  drawerContent: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1000,
+    padding: '1rem',
+  } as const,
+  modalContent: {
+    backgroundColor: '#ffffff',
+    color: '#0f172a',
     width: '100%',
-    maxWidth: '400px',
-    backgroundColor: '#fff',
+    maxWidth: '480px',
+    borderRadius: '20px',
+    padding: '2rem',
+    position: 'relative',
+    boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+    maxHeight: '90vh',
+    overflowY: 'auto',
+  } as const,
+  cartDrawer: {
+    backgroundColor: '#ffffff',
+    color: '#0f172a',
+    width: '100%',
+    maxWidth: '420px',
     height: '100%',
+    maxHeight: '100vh',
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    boxShadow: '-10px 0 30px rgba(0,0,0,0.15)',
     display: 'flex',
     flexDirection: 'column',
-    boxShadow: '-5px 0 25px rgba(0,0,0,0.2)',
-  },
-  drawerHeader: {
-    padding: '1.25rem 1.5rem',
+  } as const,
+  cartHeader: {
+    padding: '1.5rem',
     borderBottom: '1px solid #e2e8f0',
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-  },
-  drawerClose: {
+  } as const,
+  cartBody: {
+    padding: '1.5rem',
+    flex: 1,
+    overflowY: 'auto',
+  } as const,
+  cartItemCard: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingBottom: '1rem',
+    marginBottom: '1rem',
+    borderBottom: '1px solid #f1f5f9',
+  } as const,
+  modalClose: {
     background: 'none',
     border: 'none',
     fontSize: '1.25rem',
     cursor: 'pointer',
     color: '#64748b',
-  },
-  drawerBody: {
-    padding: '1.5rem',
-    flex: 1,
-    overflowY: 'auto',
-  },
-  drawerItem: {
+  } as const,
+  modalTitle: {
+    fontSize: '1.5rem',
+    fontWeight: 'bold',
+    margin: '0 0 0.25rem 0',
+  } as const,
+  modalSubtitle: {
+    fontSize: '0.875rem',
+    color: '#64748b',
+    margin: '0 0 1.5rem 0',
+  } as const,
+  heatSection: {
+    marginBottom: '1.5rem',
+  } as const,
+  sectionLabel: {
+    display: 'block',
+    fontSize: '0.75rem',
+    fontWeight: '800',
+    letterSpacing: '1px',
+    color: '#64748b',
+    marginBottom: '0.75rem',
+  } as const,
+  heatGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(2, 1fr)',
+    gap: '0.5rem',
+    marginBottom: '1rem',
+  } as const,
+  heatPill: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.5rem',
+    padding: '0.6rem 0.8rem',
+    borderRadius: '10px',
+    border: '1px solid #e2e8f0',
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+  } as const,
+  heatLabel: {
+    fontSize: '0.85rem',
+    fontWeight: '600',
+  } as const,
+  heatBanner: {
+    padding: '0.75rem 1rem',
+    borderRadius: '8px',
+    border: '1px solid',
+    fontSize: '0.85rem',
+  } as const,
+  qtyRow: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: '1rem',
-    paddingBottom: '1rem',
-    borderBottom: '1px solid #f1f5f9',
-  },
-  qtyControl: {
+    marginTop: '1.25rem',
+  } as const,
+  qtyControls: {
     display: 'flex',
     alignItems: 'center',
-    gap: '8px',
+    gap: '0.75rem',
     backgroundColor: '#f1f5f9',
-    padding: '4px 8px',
+    padding: '0.3rem 0.6rem',
     borderRadius: '8px',
-  },
+  } as const,
   qtyBtn: {
     background: 'none',
     border: 'none',
+    fontSize: '1rem',
     fontWeight: 'bold',
     cursor: 'pointer',
+    color: '#0f172a',
+  } as const,
+  qtyVal: {
+    fontWeight: 'bold',
+    fontSize: '0.9rem',
+    minWidth: '20px',
+    textAlign: 'center',
+  } as const,
+  modalInput: {
+    width: '100%',
+    padding: '0.75rem',
+    borderRadius: '8px',
+    border: '1px solid #e2e8f0',
+    fontSize: '0.9rem',
+    outline: 'none',
+    boxSizing: 'border-box',
+  } as const,
+  modalAddBtn: {
+    width: '100%',
+    backgroundColor: '#dc2626',
+    color: '#ffffff',
+    border: 'none',
+    padding: '0.9rem',
+    borderRadius: '10px',
+    fontWeight: 'bold',
     fontSize: '1rem',
-    padding: '0 4px',
-  },
-  upsellRow: {
+    cursor: 'pointer',
+    marginTop: '1.5rem',
+  } as const,
+  upsellSection: {
+    marginTop: '2rem',
+    paddingTop: '1.5rem',
+    borderTop: '1px solid #e2e8f0',
+  } as const,
+  upsellTitle: {
+    fontSize: '0.85rem',
+    fontWeight: '800',
+    color: '#64748b',
+    letterSpacing: '0.5px',
+    marginBottom: '1rem',
+  } as const,
+  upsellList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.75rem',
+  } as const,
+  upsellCard: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
     backgroundColor: '#f8fafc',
-    padding: '8px 12px',
-    borderRadius: '8px',
-    border: '1px solid #e2e8f0',
-  },
+    padding: '0.75rem 1rem',
+    borderRadius: '10px',
+    border: '1px solid #f1f5f9',
+  } as const,
   upsellAddBtn: {
     backgroundColor: '#0f172a',
-    color: '#fff',
+    color: '#ffffff',
     border: 'none',
-    padding: '4px 10px',
+    padding: '0.4rem 0.75rem',
     borderRadius: '6px',
     fontSize: '0.75rem',
     fontWeight: 'bold',
     cursor: 'pointer',
-  },
-  drawerFooter: {
+  } as const,
+  cartFooter: {
     padding: '1.5rem',
     borderTop: '1px solid #e2e8f0',
     backgroundColor: '#f8fafc',
-  },
+  } as const,
+  summaryRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    fontSize: '0.9rem',
+    color: '#475569',
+    marginBottom: '0.5rem',
+  } as const,
   checkoutBtn: {
     width: '100%',
     backgroundColor: '#dc2626',
-    color: '#fff',
+    color: '#ffffff',
     border: 'none',
-    padding: '14px',
-    borderRadius: '12px',
-    fontSize: '1.05rem',
-    fontWeight: 'bold',
-    cursor: 'pointer',
-    boxShadow: '0 4px 12px rgba(220, 38, 38, 0.3)',
-  },
-  modalOverlay: {
-    position: 'fixed',
-    inset: 0,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    zIndex: 300,
-    display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'center',
     padding: '1rem',
-  },
-  modalContent: {
-    backgroundColor: '#fff',
-    borderRadius: '20px',
-    width: '100%',
-    maxWidth: '500px',
-    maxHeight: '90vh',
-    overflowY: 'auto',
-    padding: '2rem',
-    position: 'relative',
-  },
-  modalClose: {
-    position: 'absolute',
-    top: '20px',
-    right: '20px',
-    background: '#f1f5f9',
-    border: 'none',
-    width: '32px',
-    height: '32px',
-    borderRadius: '50%',
+    borderRadius: '12px',
     fontWeight: 'bold',
-    cursor: 'pointer',
-  },
-  modalTitle: {
-    fontSize: '1.5rem',
-    fontWeight: '800',
-    color: '#0f172a',
-    margin: '0 0 4px 0',
-  },
-  modalSubtitle: {
-    fontSize: '0.9rem',
-    color: '#64748b',
-    marginBottom: '1.5rem',
-  },
-  heatSection: {
-    marginBottom: '1.5rem',
-  },
-  sectionLabel: {
-    display: 'block',
-    fontSize: '0.85rem',
-    fontWeight: '800',
-    color: '#475569',
-    marginBottom: '0.75rem',
-    letterSpacing: '0.5px',
-  },
-  heatGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(2, 1fr)',
-    gap: '8px',
-  },
-  heatPill: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-    padding: '10px 14px',
-    borderRadius: '10px',
-    border: '1px solid',
-    fontSize: '0.9rem',
-    fontWeight: '600',
-    cursor: 'pointer',
-    textAlign: 'left',
-  },
-  drinkSelect: {
-    width: '100%',
-    padding: '12px',
-    borderRadius: '10px',
-    border: '1px solid #cbd5e1',
     fontSize: '1rem',
-    backgroundColor: '#fff',
-  },
-  instructionInput: {
-    width: '100%',
-    padding: '12px',
-    borderRadius: '10px',
-    border: '1px solid #cbd5e1',
-    fontSize: '0.95rem',
-  },
-  modalFooter: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: '2rem',
-    borderTop: '1px solid #e2e8f0',
-    paddingTop: '1.5rem',
-  },
-  addCartBtn: {
-    backgroundColor: '#dc2626',
-    color: '#fff',
-    border: 'none',
-    padding: '12px 20px',
-    borderRadius: '10px',
-    fontSize: '1rem',
-    fontWeight: 'bold',
     cursor: 'pointer',
-  },
+    marginTop: '1rem',
+    boxShadow: '0 4px 15px rgba(220, 38, 38, 0.25)',
+  } as const,
   checkoutContainer: {
-    maxWidth: '600px',
+    maxWidth: '700px',
     margin: '0 auto',
-  },
+    backgroundColor: '#f8fafc',
+    padding: '1rem 0',
+  } as const,
   checkoutItemRow: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: '1rem',
     paddingBottom: '1rem',
+    marginBottom: '1rem',
     borderBottom: '1px solid #f1f5f9',
-  },
+  } as const,
   checkoutSummaryBox: {
-    backgroundColor: '#fff',
+    backgroundColor: '#ffffff',
     borderRadius: '16px',
     padding: '1.5rem',
     border: '1px solid #e2e8f0',
-  },
-  summaryRow: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    marginBottom: '0.75rem',
-    fontSize: '1rem',
-    color: '#475569',
-  },
-  backBtn: {
-    backgroundColor: '#e2e8f0',
-    color: '#475569',
-    border: 'none',
-    padding: '14px 20px',
-    borderRadius: '12px',
-    fontSize: '1rem',
-    fontWeight: 'bold',
-    cursor: 'pointer',
-  },
-  paymentForm: {
-    maxWidth: '500px',
-    margin: '40px auto',
-    padding: '2rem',
-    backgroundColor: '#ffffff',
-    borderRadius: '16px',
     boxShadow: '0 10px 25px rgba(0,0,0,0.05)',
-    border: '1px solid #e2e8f0',
-  },
-  loadingContainer: {
-    display: 'flex',
-    flexDirection: 'column',
-    justifyContent: 'center',
-    alignItems: 'center',
-    height: '100vh',
-    backgroundColor: '#0f172a',
-    color: '#fff',
-  },
-  spinner: {
-    width: '50px',
-    height: '50px',
-    border: '4px solid rgba(255,255,255,0.1)',
-    borderTop: '4px solid #dc2626',
-    borderRadius: '50%',
-    animation: 'spin 1s linear infinite',
-    marginBottom: '1rem',
-  },
-  loadingText: {
-    fontFamily: '"Bangers", cursive, sans-serif',
-    fontSize: '1.5rem',
-    letterSpacing: '2px',
-    color: '#fff',
-  },
+  } as const,
+  backBtn: {
+    flex: 1,
+    backgroundColor: '#f1f5f9',
+    color: '#0f172a',
+    border: '1px solid #cbd5e1',
+    padding: '1rem',
+    borderRadius: '12px',
+    fontWeight: 'bold',
+    fontSize: '1rem',
+    cursor: 'pointer',
+  } as const,
 };
