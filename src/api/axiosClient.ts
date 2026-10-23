@@ -11,7 +11,7 @@ export const axiosClient = axios.create({
 
 axiosClient.interceptors.request.use((config) => {
     const token = localStorage.getItem('token');
-    if (token) {
+    if (token && token !== 'undefined' && token !== 'null') {
         config.headers.Authorization = `Bearer ${token}`;
     }
     return config;
@@ -20,10 +20,8 @@ axiosClient.interceptors.request.use((config) => {
 axiosClient.interceptors.response.use(
     (response) => response,
     (error) => {
-        if (error.response?.status === 401) {
-            localStorage.removeItem('token');
-            window.location.href = '/login';
-        }
+        // Log the error instead of hard redirecting during debugging
+        console.error('API Error:', error.response?.status, error.response?.data);
         return Promise.reject(error);
     }
 );
